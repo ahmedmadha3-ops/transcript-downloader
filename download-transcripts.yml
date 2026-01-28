@@ -1,0 +1,79 @@
+name: Download Transcripts
+
+on:
+  workflow_dispatch:  # Manual trigger only
+    inputs:
+      max_transcripts:
+        description: 'Maximum number of transcripts to download (0 = all)'
+        required: false
+        default: '0'
+
+jobs:
+  download-transcripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # 2 hour timeout for large downloads
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Chrome
+        uses: browser-actions/setup-chrome@latest
+        with:
+          chrome-version: stable
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run transcript downloader
+        env:
+          SCREENER_USERNAME: ${{ secrets.SCREENER_USERNAME }}
+          SCREENER_PASSWORD: ${{ secrets.SCREENER_PASSWORD }}
+          GOOGLE_CREDENTIALS_BASE64: ${{ secrets.GOOGLE_CREDENTIALS_BASE64 }}
+          DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+        run: |
+          python transcript_downloader.py
+
+      - name: Send success email
+        if: success()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "✅ Transcript Download Complete"
+          to: ${{ secrets.NOTIFICATION_EMAIL }}
+          from: ${{ secrets.EMAIL_USERNAME }}
+          body: |
+            Transcript download completed successfully!
+            
+            Check your Google Drive folder:
+            https://drive.google.com/drive/folders/${{ secrets.DRIVE_FOLDER_ID }}
+            
+            Workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Send failure email
+        if: failure()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          username: ${{ secrets.EMAIL_USERNAME }}
+          password: ${{ secrets.EMAIL_PASSWORD }}
+          subject: "❌ Transcript Download Failed"
+          to: ${{ secrets.NOTIFICATION_EMAIL }}
+          from: ${{ secrets.EMAIL_USERNAME }}
+          body: |
+            Transcript download failed!
+            
+            Check the workflow for details:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
